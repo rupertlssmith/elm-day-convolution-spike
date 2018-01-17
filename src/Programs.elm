@@ -32,11 +32,16 @@ prog2 =
 
 
 main =
-    combine prog1 prog2 |> Html.program
+    combineHeadlessAndHtmlWithChannel prog1 prog2 |> Html.program
 
 
 
 -- Program convolution
+
+
+swap : ( a, b ) -> ( b, a )
+swap ( a, b ) =
+    ( b, a )
 
 
 type alias HeadlessProgramWithChannel model msg send recv =
@@ -76,62 +81,130 @@ type Msg a b
     | BMsg b
 
 
-combine :
+{-| Combines a headless program with a
+-}
+combineHeadlessAndHtmlWithChannel :
     HeadlessProgramWithChannel modela msga send recv
     -> HtmlProgramWithChannel modelb msgb recv send
     -> HtmlProgram ( modela, modelb ) (Msg msga msgb)
-combine a b =
-    { init =
-        ( ( Tuple.first a.init, Tuple.first b.init )
+combineHeadlessAndHtmlWithChannel progA progB =
+    { init = init progA progB
+    , update = update progA progB
+    , subscriptions = subscriptions progA progB
+    , view = view progB
+    }
+
+
+combineHeadlessWithChannel :
+    HeadlessProgramWithChannel modela msga send recv
+    -> HeadlessProgramWithChannel modelb msgb recv send
+    -> HeadlessProgram ( modela, modelb ) (Msg msga msgb)
+combineHeadlessWithChannel progA progB =
+    { init = init progA progB
+    , update = update progA progB
+    , subscriptions = subscriptions progA progB
+    }
+
+
+{-| Combines the init fields of two programs.
+-}
+init :
+    { a | init : ( modela, Cmd msga ) }
+    -> { b | init : ( modelb, Cmd msgb ) }
+    -> ( ( modela, modelb ), Cmd (Msg msga msgb) )
+init progA progB =
+    let
+        modelA =
+            Tuple.first progA.init
+
+        modelB =
+            Tuple.first progB.init
+
+        cmdA =
+            Tuple.second progA.init
+
+        cmbB =
+            Tuple.second progB.init
+    in
+        ( ( modelA, modelB )
         , Cmd.batch
-            [ Cmd.map (\amsg -> AMsg amsg) <| Tuple.second a.init
-            , Cmd.map (\bmsg -> BMsg bmsg) <| Tuple.second b.init
+            [ Cmd.map AMsg cmdA
+            , Cmd.map BMsg cmbB
             ]
         )
-    , update =
-        \msg ->
-            case msg of
-                AMsg amsg ->
-                    \model ->
-                        let
-                            ( newA, cmda, maybeSend ) =
-                                a.update amsg (Tuple.first model)
-                        in
-                            ( ( newA
-                              , case maybeSend of
-                                    Just send ->
-                                        b.receive send <| Tuple.second model
 
-                                    Nothing ->
-                                        Tuple.second model
-                              )
-                            , Cmd.map (\amsg -> AMsg amsg) cmda
-                            )
 
-                BMsg bmsg ->
-                    \model ->
-                        let
-                            ( newB, cmdb, maybeSend ) =
-                                b.update bmsg (Tuple.second model)
-                        in
-                            ( ( case maybeSend of
-                                    Just send ->
-                                        a.receive send <| Tuple.first model
+{-| Combines the update functions of two programs, with receive channels.
+-}
+update :
+    { a | receive : receive -> modela -> modela, update : msga -> modela -> ( modela, Cmd msga, Maybe send ) }
+    -> { b | receive : send -> modelb -> modelb, update : msgb -> modelb -> ( modelb, Cmd msgb, Maybe receive ) }
+    -> Msg msga msgb
+    -> ( modela, modelb )
+    -> ( ( modela, modelb ), Cmd (Msg msga msgb) )
+update progA progB msg model =
+    let
+        modelA =
+            Tuple.first model
 
-                                    Nothing ->
-                                        Tuple.first model
-                              , newB
-                              )
-                            , Cmd.map (\bmsg -> BMsg bmsg) cmdb
-                            )
-    , subscriptions =
-        \model ->
-            Sub.batch
-                [ Sub.map (\amsg -> AMsg amsg) <| a.subscriptions (Tuple.first model)
-                , Sub.map (\bmsg -> BMsg bmsg) <| b.subscriptions (Tuple.second model)
-                ]
-    , view =
-        \model ->
-            b.view (Tuple.second model)
-                |> Html.map (\bmsg -> BMsg bmsg)
-    }
+        modelB =
+            Tuple.second model
+
+        updateAndSend progA progB msg modelA modelB tagger =
+            let
+                ( newModel, cmds, maybeSend ) =
+                    progA.update msg modelA
+            in
+                ( ( newModel
+                  , case maybeSend of
+                        Just send ->
+                            progB.receive send modelB
+
+                        Nothing ->
+                            modelB
+                  )
+                , Cmd.map tagger cmds
+                )
+    in
+        case msg of
+            AMsg amsg ->
+                updateAndSend progA progB amsg modelA modelB AMsg
+
+            BMsg bmsg ->
+                updateAndSend progB progA bmsg modelB modelA BMsg
+                    |> Tuple.mapFirst swap
+
+
+{-| Combines the subscriptions of two programs.
+-}
+subscriptions :
+    { a | subscriptions : modela -> Sub msga }
+    -> { b | subscriptions : modelb -> Sub msgb }
+    -> ( modela, modelb )
+    -> Sub (Msg msga msgb)
+subscriptions progA progB model =
+    let
+        modelA =
+            Tuple.first model
+
+        modelB =
+            Tuple.second model
+    in
+        Sub.batch
+            [ progA.subscriptions modelA |> Sub.map AMsg
+            , progB.subscriptions modelB |> Sub.map BMsg
+            ]
+
+
+{-| Lifts the view of one program as the view of a combined program.
+-}
+view :
+    { b | view : modelb -> Html msgb }
+    -> ( modela, modelb )
+    -> Html (Msg msga msgb)
+view progB model =
+    let
+        modelB =
+            Tuple.second model
+    in
+        progB.view modelB |> Html.map BMsg
