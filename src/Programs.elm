@@ -44,17 +44,17 @@ swap ( a, b ) =
     ( b, a )
 
 
-type alias HeadlessProgramWithChannel model msg send recv =
+type alias HeadlessProgramWithChannel model msg snd recv =
     { init : ( model, Cmd msg )
-    , update : msg -> model -> ( model, Cmd msg, Maybe send )
+    , update : msg -> model -> ( model, Cmd msg, Maybe snd )
     , subscriptions : model -> Sub msg
     , receive : recv -> model -> model
     }
 
 
-type alias HtmlProgramWithChannel model msg send recv =
+type alias HtmlProgramWithChannel model msg snd recv =
     { init : ( model, Cmd msg )
-    , update : msg -> model -> ( model, Cmd msg, Maybe send )
+    , update : msg -> model -> ( model, Cmd msg, Maybe snd )
     , subscriptions : model -> Sub msg
     , view : model -> Html msg
     , receive : recv -> model -> model
@@ -137,8 +137,8 @@ init progA progB =
 {-| Combines the update functions of two programs, with receive channels.
 -}
 update :
-    { a | receive : receive -> modela -> modela, update : msga -> modela -> ( modela, Cmd msga, Maybe send ) }
-    -> { b | receive : send -> modelb -> modelb, update : msgb -> modelb -> ( modelb, Cmd msgb, Maybe receive ) }
+    { a | receive : recv -> modela -> modela, update : msga -> modela -> ( modela, Cmd msga, Maybe snd ) }
+    -> { b | receive : snd -> modelb -> modelb, update : msgb -> modelb -> ( modelb, Cmd msgb, Maybe recv ) }
     -> Msg msga msgb
     -> ( modela, modelb )
     -> ( ( modela, modelb ), Cmd (Msg msga msgb) )
