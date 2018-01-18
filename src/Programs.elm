@@ -16,7 +16,7 @@ prog1 : HeadlessProgramWithChannel {} String String Never
 prog1 =
     { init = ( {}, Cmd.none )
     , subscriptions = \_ -> every second (\time -> (toString time))
-    , update = \time -> \model -> ( model, Cmd.none, Just time )
+    , update = \time -> \send -> \model -> ( model, send time )
     , receive = \_ -> \model -> model
     }
 
@@ -25,7 +25,7 @@ prog2 : HtmlProgramWithChannel Model Never Never String
 prog2 =
     { init = ( { message = "" }, Cmd.none )
     , subscriptions = \_ -> Sub.none
-    , update = \_ -> \model -> ( model, Cmd.none, Nothing )
+    , update = \_ -> \_ -> \model -> ( model, Cmd.none )
     , view = \model -> Html.text <| "message: " ++ model.message
     , receive = \message -> \model -> { model | message = message }
     }
@@ -96,7 +96,7 @@ swap ( a, b ) =
 
 type alias HeadlessProgramWithChannel model msg snd recv =
     { init : ( model, Cmd msg )
-    , update : msg -> model -> ( model, Cmd msg, Maybe snd )
+    , update : msg -> (snd -> Cmd msg) -> model -> ( model, Cmd msg )
     , subscriptions : model -> Sub msg
     , receive : recv -> model -> model
     }
@@ -104,7 +104,7 @@ type alias HeadlessProgramWithChannel model msg snd recv =
 
 type alias HtmlProgramWithChannel model msg snd recv =
     { init : ( model, Cmd msg )
-    , update : msg -> model -> ( model, Cmd msg, Maybe snd )
+    , update : msg -> (snd -> Cmd msg) -> model -> ( model, Cmd msg )
     , subscriptions : model -> Sub msg
     , view : model -> Html msg
     , receive : recv -> model -> model
@@ -126,17 +126,19 @@ type alias HtmlProgram model msg =
     }
 
 
-type Msg a b
+type Msg a b s r
     = AMsg a
     | BMsg b
+    | AtoB s
+    | BtoA r
 
 
 {-| Combines a headless program with a
 -}
 combineHeadlessAndHtmlWithChannel :
-    HeadlessProgramWithChannel modela msga send recv
-    -> HtmlProgramWithChannel modelb msgb recv send
-    -> HtmlProgram ( modela, modelb ) (Msg msga msgb)
+    HeadlessProgramWithChannel modela msga snd recv
+    -> HtmlProgramWithChannel modelb msgb recv snd
+    -> HtmlProgram ( modela, modelb ) (Msg msga msgb snd recv)
 combineHeadlessAndHtmlWithChannel progA progB =
     { init = init progA progB
     , update = update progA progB
@@ -146,9 +148,9 @@ combineHeadlessAndHtmlWithChannel progA progB =
 
 
 combineHeadlessWithChannel :
-    HeadlessProgramWithChannel modela msga send recv
-    -> HeadlessProgramWithChannel modelb msgb recv send
-    -> HeadlessProgram ( modela, modelb ) (Msg msga msgb)
+    HeadlessProgramWithChannel modela msga snd recv
+    -> HeadlessProgramWithChannel modelb msgb recv snd
+    -> HeadlessProgram ( modela, modelb ) (Msg msga msgb snd recv)
 combineHeadlessWithChannel progA progB =
     { init = init progA progB
     , update = update progA progB
@@ -161,7 +163,7 @@ combineHeadlessWithChannel progA progB =
 init :
     { a | init : ( modela, Cmd msga ) }
     -> { b | init : ( modelb, Cmd msgb ) }
-    -> ( ( modela, modelb ), Cmd (Msg msga msgb) )
+    -> ( ( modela, modelb ), Cmd (Msg msga msgb snd recv) )
 init progA progB =
     let
         modelA =
@@ -187,11 +189,11 @@ init progA progB =
 {-| Combines the update functions of two programs, with receive channels.
 -}
 update :
-    { a | receive : recv -> modela -> modela, update : msga -> modela -> ( modela, Cmd msga, Maybe snd ) }
-    -> { b | receive : snd -> modelb -> modelb, update : msgb -> modelb -> ( modelb, Cmd msgb, Maybe recv ) }
-    -> Msg msga msgb
+    { a | receive : recv -> modela -> modela, update : msga -> (snd -> Cmd msga) -> modela -> ( modela, Cmd msga ) }
+    -> { b | receive : snd -> modelb -> modelb, update : msgb -> (recv -> Cmd msgb) -> modelb -> ( modelb, Cmd msgb ) }
+    -> Msg msga msgb snd recv
     -> ( modela, modelb )
-    -> ( ( modela, modelb ), Cmd (Msg msga msgb) )
+    -> ( ( modela, modelb ), Cmd (Msg msga msgb snd recv) )
 update progA progB msg model =
     let
         modelA =
@@ -202,17 +204,10 @@ update progA progB msg model =
 
         updateAndSend progA progB msg modelA modelB tagger =
             let
-                ( newModel, cmds, maybeSend ) =
-                    progA.update msg modelA
+                ( newModel, cmds ) =
+                    progA.update msg (\_ -> Cmd.none) modelA
             in
-                ( ( newModel
-                  , case maybeSend of
-                        Just send ->
-                            progB.receive send modelB
-
-                        Nothing ->
-                            modelB
-                  )
+                ( ( newModel, modelB )
                 , Cmd.map tagger cmds
                 )
     in
@@ -224,6 +219,9 @@ update progA progB msg model =
                 updateAndSend progB progA bmsg modelB modelA BMsg
                     |> Tuple.mapFirst swap
 
+            _ ->
+                ( model, Cmd.none )
+
 
 {-| Combines the subscriptions of two programs.
 -}
@@ -231,7 +229,7 @@ subscriptions :
     { a | subscriptions : modela -> Sub msga }
     -> { b | subscriptions : modelb -> Sub msgb }
     -> ( modela, modelb )
-    -> Sub (Msg msga msgb)
+    -> Sub (Msg msga msgb snd recv)
 subscriptions progA progB model =
     let
         modelA =
@@ -251,7 +249,7 @@ subscriptions progA progB model =
 view :
     { b | view : modelb -> Html msgb }
     -> ( modela, modelb )
-    -> Html (Msg msga msgb)
+    -> Html (Msg msga msgb snd recv)
 view progB model =
     let
         modelB =
