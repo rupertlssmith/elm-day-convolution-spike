@@ -36,6 +36,56 @@ main =
 
 
 
+-- Ideas
+
+
+ideas =
+    True
+
+
+
+-- This update function is generic and can be re-bound as a re-usable function within
+-- any update function using it.
+--update : Callbacks model msg -> Msg -> model -> ( model, Cmd msg )
+-- This api call takes a tagger to the parent message type.
+--invokeDelete : String -> (Msg -> msg) -> String -> Cmd msg
+
+
+type alias Prog1 model msg snd recv =
+    { init : ( model, Cmd msg )
+
+    -- A send function is passed in that produces Cmds of the right type.
+    , update : msg -> (snd -> Cmd msg) -> model -> ( model, Cmd msg )
+    , subscriptions : model -> Sub msg
+
+    -- changes always follow the (model, Cmd) pattern.
+    , receive : recv -> model -> ( model, Cmd msg )
+    }
+
+
+
+-- Want to pass in APIs like this.
+
+
+type alias Api msg =
+    { time : Time -> Cmd msg
+    }
+
+
+
+-- Parent message type might have cases for the messages to.
+-- type Msg a b
+--     = AMsg a
+--     | BMsg b
+--     | AtoB s
+--     | BtoA r
+
+
+moreIdeas =
+    Nothing
+
+
+
 -- Program convolution
 
 
