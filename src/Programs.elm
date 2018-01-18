@@ -39,7 +39,7 @@ main =
 -- Ideas
 
 
-ideas =
+idea1 =
     True
 
 
@@ -47,6 +47,13 @@ ideas =
 -- This update function is generic and can be re-bound as a re-usable function within
 -- any update function using it.
 --update : Callbacks model msg -> Msg -> model -> ( model, Cmd msg )
+
+
+idea2 =
+    True
+
+
+
 -- This api call takes a tagger to the parent message type.
 --invokeDelete : String -> (Msg -> msg) -> String -> Cmd msg
 
@@ -65,11 +72,24 @@ type alias Prog1 model msg snd recv =
 
 
 -- Want to pass in APIs like this.
+-- type alias Api msg =
+--     { time : Time -> Task Never Time
+--     }
 
 
-type alias Api msg =
-    { time : Time -> Cmd msg
-    }
+idea3 =
+    True
+
+
+
+-- This captures an async message call perfectly.
+--Task.perform NewTime Time.now
+-- First arg is where to respond to the call.
+-- Second arg is the API call.
+
+
+idea4 =
+    True
 
 
 
