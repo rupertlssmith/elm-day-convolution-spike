@@ -16,7 +16,7 @@ prog1 : HeadlessProgramWithChannel {} String String Never
 prog1 =
     { init = ( {}, Cmd.none )
     , subscriptions = \_ -> every second (\time -> (toString time))
-    , update = \time -> \model -> ( model, Cmd.none, Just time )
+    , update = \time -> \model -> ( model, Cmd.none, [ time ] )
     , receive = \_ -> \model -> model
     }
 
@@ -25,7 +25,7 @@ prog2 : HtmlProgramWithChannel Model Never Never String
 prog2 =
     { init = ( { message = "" }, Cmd.none )
     , subscriptions = \_ -> Sub.none
-    , update = \_ -> \model -> ( model, Cmd.none, Nothing )
+    , update = \_ -> \model -> ( model, Cmd.none, [] )
     , view = \model -> Html.text <| "message: " ++ model.message
     , receive = \message -> \model -> { model | message = message }
     }
@@ -96,7 +96,7 @@ swap ( a, b ) =
 
 type alias HeadlessProgramWithChannel model msg snd recv =
     { init : ( model, Cmd msg )
-    , update : msg -> model -> ( model, Cmd msg, Maybe snd )
+    , update : msg -> model -> ( model, Cmd msg, List snd )
     , subscriptions : model -> Sub msg
     , receive : recv -> model -> model
     }
@@ -104,7 +104,7 @@ type alias HeadlessProgramWithChannel model msg snd recv =
 
 type alias HtmlProgramWithChannel model msg snd recv =
     { init : ( model, Cmd msg )
-    , update : msg -> model -> ( model, Cmd msg, Maybe snd )
+    , update : msg -> model -> ( model, Cmd msg, List snd )
     , subscriptions : model -> Sub msg
     , view : model -> Html msg
     , receive : recv -> model -> model
@@ -187,8 +187,8 @@ init progA progB =
 {-| Combines the update functions of two programs, with receive channels.
 -}
 update :
-    { a | receive : recv -> modela -> modela, update : msga -> modela -> ( modela, Cmd msga, Maybe snd ) }
-    -> { b | receive : snd -> modelb -> modelb, update : msgb -> modelb -> ( modelb, Cmd msgb, Maybe recv ) }
+    { a | receive : recv -> modela -> modela, update : msga -> modela -> ( modela, Cmd msga, List snd ) }
+    -> { b | receive : snd -> modelb -> modelb, update : msgb -> modelb -> ( modelb, Cmd msgb, List recv ) }
     -> Msg msga msgb
     -> ( modela, modelb )
     -> ( ( modela, modelb ), Cmd (Msg msga msgb) )
@@ -202,16 +202,11 @@ update progA progB msg model =
 
         updateAndSend progA progB msg modelA modelB tagger =
             let
-                ( newModel, cmds, maybeSend ) =
+                ( newModel, cmds, sendItems ) =
                     progA.update msg modelA
             in
                 ( ( newModel
-                  , case maybeSend of
-                        Just send ->
-                            progB.receive send modelB
-
-                        Nothing ->
-                            modelB
+                  , List.foldl (progB.receive) modelB sendItems
                   )
                 , Cmd.map tagger cmds
                 )
