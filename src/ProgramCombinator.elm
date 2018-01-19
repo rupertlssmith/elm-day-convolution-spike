@@ -81,6 +81,26 @@ type Msg a b
     | BMsg b
 
 
+
+--
+-- Common model and message formats based on records:
+--
+-- Define payloads like
+-- type alias AuthPayload = { a | authCmd : AuthCmd }
+-- type alias AuthResponse = { a | authResponse : AuthResponse }
+-- type alias AuthChannel = AuthPayload (AuthResponse)
+--
+-- Provide constructors for the commands.
+-- Expose the AuthResponse to consumer can understand it.
+--
+-- Defines models like
+-- type alias AuthModel = { a | authModel : AuthModel }
+-- Do not expose the internal model.
+--
+-- Define internal message types like:
+-- type alias
+
+
 {-| Combines a headless program with a
 -}
 combineHeadlessAndHtmlWithChannel :
